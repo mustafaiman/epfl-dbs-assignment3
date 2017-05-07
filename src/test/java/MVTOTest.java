@@ -8,7 +8,7 @@ public class MVTOTest {
 	public static void main(String[] args) {
 		
 		// # of test to execute
-		int TEST = 1;
+		int TEST = 5;
 		
 		// For automatic validation, it is not possible to execute all tests at once
 		// You can get the TEST# from args and execute all tests using a shell-script
@@ -243,7 +243,7 @@ public class MVTOTest {
 					} catch (Exception e) {
 						ignoredXactLabels.add(xactLabel);
 						log.println("    "+e.getMessage());
-						//e.printStackTrace();
+						e.printStackTrace();
 					}
 					break;
 				}
