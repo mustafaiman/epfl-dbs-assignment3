@@ -46,14 +46,17 @@ public class MVTO {
             kvStore.put(key, newVal);
             activeTxn.addToLog(newVal.getBeforeWriteTimestamp(xact));
         } else {
-            System.out.println("Key: " + key + " already exists.");
             rollback(xact);
+            throw new Exception("Key: " + key + " already exists.");
         }
     }
 
     // return value of object key in transaction xact
     public static int read(int xact, int key) throws Exception {
         Value val = kvStore.get(key);
+        if (val == null) {
+            throw new Exception("There is no tuple with key " + key);
+        }
         Transaction txn = activeTransactionsById.get(xact);
         ValueVersion versioned = val.getBeforeWriteTimestamp(txn.getTimestamp());
         if (versioned.getRts() < txn.getTimestamp()) {
@@ -70,6 +73,9 @@ public class MVTO {
         logger.info("Write issued for " + xact + " => {" + key + "," + value + "}");
         Value val = kvStore.get(key);
         Transaction txn = activeTransactionsById.get(xact);
+        if (txn == null) {
+            throw new Exception("Transaction " + xact + " is not active!");
+        }
         ValueVersion versioned = val.getBeforeWriteTimestamp(txn.getTimestamp());
         if (txn.getTimestamp() < versioned.getRts()) {
             rollback(xact);
@@ -175,6 +181,16 @@ class Value {
     }
 
     public ValueVersion removeVersion(int wts) {
+        Iterator<ValueVersion> it = versions.descendingIterator();
+        while (it.hasNext()) {
+            ValueVersion current = it.next();
+            if (wts > current.getWts()) {
+                return null;
+            } else if (wts == current.getWts()) {
+                it.remove();
+                return current;
+            }
+        }
         return null;
     }
 
