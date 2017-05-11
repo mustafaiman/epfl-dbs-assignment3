@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 GASPAR="iman"
-SUBMISSION_DIR="submission/$GASPAR/exercise2"
+SUBMISSION_DIR="submission/$GASPAR/exercise3"
 SOURCE_BASE="src/main/java"
 
 rm -f MVTO.pdf MVTO.log MVTO.dvi MVTO.aux
 pdflatex MVTO.tex
 
-rm -rf $SUBMISSION_DIR
+rm -rf submission
 mkdir -p $SUBMISSION_DIR/task1
 mkdir -p $SUBMISSION_DIR/task2
 
