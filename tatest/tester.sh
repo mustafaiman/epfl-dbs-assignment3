@@ -1,14 +1,11 @@
-#!/bin/bash
+#!/bin/sh
 
 BASEDIR=$(dirname $0)
-
-MVTOJAVA=src/main/java/MVTO.java
-MVTOTESTJAVA=src/test/java/MVTOTest.java
 
 cd $BASEDIR
 rm -rf ./classes
 mkdir -p ./classes
-javac -d ./classes $MVTOJAVA $MVTOTEST
+javac -d ./classes MVTO.java MVTOTest.java
 
 for TEST in {1..5}
 do

@@ -23,4 +23,7 @@ submission.zip
 
 classes/
 
+tatest/*.java
+tatest/classes
+
 *.crc

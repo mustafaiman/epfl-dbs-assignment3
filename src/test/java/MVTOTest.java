@@ -15,8 +15,7 @@ public class MVTOTest {
 		if(args.length > 0) {
 			TEST = Integer.parseInt(args[0]);
 		}
-		
-		try {
+
 			switch (TEST) {
 				case 1: test1(); break;
 				case 2: test2(); break;
@@ -24,9 +23,6 @@ public class MVTOTest {
 				case 4: test4(); break;
 				case 5: test5(); break;
 			}
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
 	}
 	private static void test1() {
 		log.println("----------- Test 1 -----------");

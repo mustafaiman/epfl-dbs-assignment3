@@ -1,6 +1,7 @@
 import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.logging.Logger;
 
 /**
  * implement a (main-memory) data store with MVTO.
@@ -24,22 +25,26 @@ public class MVTO {
 
     private static int max_xact = 0;
 
+    private static Logger logger = Logger.getLogger(MVTO.class.getCanonicalName());
+
     // returns transaction id == logical start timestamp
     public static int begin_transaction() {
         max_xact++;
         Transaction txn = new Transaction(max_xact);
-        activeTransactionsById.put(txn.getTimestamp(), txn);
+        activeTransactionsById.put(max_xact, txn);
+        logger.info("Begin transaction " + max_xact);
         return max_xact;
     }
 
     // create and initialize new object in transaction xact
     public static void insert(int xact, int key, int value) throws Exception {
+        logger.info("Insert issued for " + xact + " => {" + key + "," + value + "}");
         Value valObj = kvStore.get(key);
         if (valObj == null) {
             Transaction activeTxn = activeTransactionsById.get(xact);
             Value newVal = new Value(key, value, activeTxn.getTimestamp());
             kvStore.put(key, newVal);
-            activeTxn.addToLog(key);
+            activeTxn.addToLog(newVal.getBeforeWriteTimestamp(xact));
         } else {
             System.out.println("Key: " + key + " already exists.");
             rollback(xact);
@@ -56,34 +61,44 @@ public class MVTO {
         }
         versioned.addDependant(xact);
         txn.waitOne();
+        logger.info("Read issued for " + xact + " => {" + key + "," + versioned.getContent()  + "}");
         return versioned.getContent();
     }
 
     // write value of existing object identified by key in transaction xact
     public static void write(int xact, int key, int value) throws Exception {
+        logger.info("Write issued for " + xact + " => {" + key + "," + value + "}");
         Value val = kvStore.get(key);
         Transaction txn = activeTransactionsById.get(xact);
         ValueVersion versioned = val.getBeforeWriteTimestamp(txn.getTimestamp());
         if (txn.getTimestamp() < versioned.getRts()) {
             rollback(xact);
         } else if (txn.getTimestamp() >= versioned.getRts() && txn.getTimestamp() == versioned.getWts()) {
-            val.createNewVersion(value, versioned.getRts(), txn.getTimestamp());
-            //TODO remove old one
+            versioned.setContent(value);
+            //txn.addToLog(versioned);
         } else if (txn.getTimestamp() >= versioned.getRts() && versioned.getWts() < txn.getTimestamp()) {
-            val.createNewVersion(value, txn.getTimestamp(), txn.getTimestamp());
+            ValueVersion vers = val.createNewVersion(value, txn.getTimestamp(), txn.getTimestamp());
+            txn.addToLog(vers);
         }
     }
 
     public static void commit(int xact) throws Exception {
+        logger.info("Commit issued for " + xact);
         Transaction txn = activeTransactionsById.get(xact);
+        if (txn == null) {
+            throw new Exception("Transaction " + xact + " is not active.");
+        }
         if (!txn.isWaiting()) {
-            List<Integer> dependants = txn.getLog();
-            for (Integer possibleWaiter: dependants) {
-                Transaction waiter = activeTransactionsById.get(possibleWaiter);
-                if (waiter != null) {
-                    waiter.waitLess();
-                    if (!waiter.isWaiting()) {
-                        commit(waiter.getTimestamp());
+            List<ValueVersion> txnLog = txn.getLog();
+            for (ValueVersion writtenByThis: txnLog) {
+                for (Integer possibleWaiter: writtenByThis.getDependants()) {
+                    Transaction waiter = activeTransactionsById.get(possibleWaiter);
+                    if (waiter != null) {
+                        assert waiter.isWaiting();
+                        waiter.waitLess();
+                        if (!waiter.isWaiting()) {
+                            commit(waiter.getTimestamp());
+                        }
                     }
                 }
             }
@@ -92,15 +107,21 @@ public class MVTO {
     }
 
     public static void rollback(int xact) throws Exception {
-        AbstractQueue<Integer> rollbackQueue = new LinkedBlockingDeque<>();
+        Queue<Integer> rollbackQueue = new LinkedBlockingDeque<>();
         rollbackQueue.add(xact);
         while (!rollbackQueue.isEmpty()) {
             int txnId = rollbackQueue.remove();
+            logger.info("Rollback " + txnId);
             Transaction txn = activeTransactionsById.remove(txnId);
-            LinkedList<Integer> ops = txn.getLog();
-            for (Integer key: ops) {
-                ValueVersion removedVersion = kvStore.get(key).removeVersion(txn.getTimestamp());
-                for (Integer dependantTxnId: removedVersion.getDependants()) {
+            if (txn == null) {
+                System.out.println("Transaction " + txnId + " was already rolled back!");
+                continue;
+            }
+            LinkedList<ValueVersion> txnLog = txn.getLog();
+            for (ValueVersion writtenByThis: txnLog) {
+                int key = writtenByThis.getKey();
+                kvStore.get(key).removeVersion(writtenByThis.getWts());
+                for (Integer dependantTxnId : writtenByThis.getDependants()) {
                     rollbackQueue.add(dependantTxnId);
                 }
             }
@@ -116,12 +137,12 @@ class Value {
     Value(int key, int initialValue, int timestamp) {
         this.key = key;
         this.versions = new LinkedList<>();
-        ValueVersion initialVersion = new ValueVersion(timestamp, 0, initialValue);
+        ValueVersion initialVersion = new ValueVersion(key, timestamp, 0, initialValue);
         this.versions.add(initialVersion);
     }
 
-    void createNewVersion(int content, int rts, int wts) {
-        ValueVersion versioned = new ValueVersion(rts, wts, content);
+    ValueVersion createNewVersion(int content, int rts, int wts) {
+        ValueVersion versioned = new ValueVersion(key, rts, wts, content);
         Iterator<ValueVersion> it = versions.descendingIterator();
         ValueVersion addAfter = null;
         int i = versions.size();
@@ -138,6 +159,7 @@ class Value {
         } else {
             versions.add(i, versioned);
         }
+        return versioned;
     }
 
     ValueVersion getBeforeWriteTimestamp(int timestamp) {
@@ -159,12 +181,14 @@ class Value {
 }
 
 class ValueVersion {
+    private final int key;
     private int rts;
     private int wts;
     private int content;
     private LinkedList<Integer> dependants = new LinkedList<>();
 
-    ValueVersion(int rts, int wts, int content) {
+    ValueVersion(int key, int rts, int wts, int content) {
+        this.key = key;
         this.rts = rts;
         this.wts = wts;
         this.content = content;
@@ -180,6 +204,10 @@ class ValueVersion {
 
     public int getWts() {
         return this.wts;
+    }
+
+    public int getKey() {
+        return this.key;
     }
 
     void setContent(int content) {
@@ -201,7 +229,7 @@ class ValueVersion {
 
 class Transaction {
     final private int timestamp;
-    private LinkedList<Integer> addedByThis = new LinkedList<>();
+    private LinkedList<ValueVersion> writtenByThis = new LinkedList<>();
     private int waitingFor;
 
     public Transaction(int timestamp) {
@@ -213,12 +241,12 @@ class Transaction {
         return this.timestamp;
     }
 
-    public void addToLog(Integer key) {
-        addedByThis.add(key);
+    public void addToLog(ValueVersion key) {
+        writtenByThis.add(key);
     }
 
-    public LinkedList<Integer> getLog() {
-        return this.addedByThis;
+    public LinkedList<ValueVersion> getLog() {
+        return this.writtenByThis;
     }
 
     public boolean isWaiting() {
