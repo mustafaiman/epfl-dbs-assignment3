@@ -19,6 +19,7 @@ submission/
 *.pdf
 *.aux
 *.log
+*.synctex.gz
 submission.zip
 
 classes/

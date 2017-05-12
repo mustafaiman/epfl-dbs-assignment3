@@ -6,5 +6,6 @@
 \date{12.05.2017}
 \maketitle
 
+MVTO should be able to support higher throughput. Both systems are expected to abort some transactions due to conflicting writes with a workload consisting of write-heavy transactions. MVTO aborts the transaction as soon as it sees a conflicting write operation whereas OCC aborts the same transaction only in validation phase which is at the end of transaction runtime. Therefore OCC spends more time on transactions that are going to be aborted eventually which is a waste of CPU time and reduces overall throughput. 
 
 \end{document}
