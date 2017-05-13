@@ -8,7 +8,7 @@ public class MVTOTest {
 	public static void main(String[] args) {
 		
 		// # of test to execute
-		int TEST = 5;
+		int TEST = 2;
 		
 		// For automatic validation, it is not possible to execute all tests at once
 		// You can get the TEST# from args and execute all tests using a shell-script
@@ -22,8 +22,39 @@ public class MVTOTest {
 				case 3: test3(); break;
 				case 4: test4(); break;
 				case 5: test5(); break;
+                case 1001: customtest1(); break;
 			}
 	}
+
+	private static void customtest1() {
+		log.println("----------- Custom Test 1 -----------");
+		/* Example schedule:
+		 T1: I(1) C
+		 T2:        R(1) W(1)            C
+		 T3:                  W(1) W(4)     C
+		*/
+		int[][][] schedule = new int[][][]{
+			/*T1:*/ {I(1),__C_                                        },
+			/*T2:*/ {____,____,R(1),W(1),____,____,R(1),____,__C_     },
+			/*T3:*/ {____,____,____,____,W(1),W(4),____,__C_}
+		};
+//		T(1):I(1,4)
+//		T(1):COMMIT START
+//		T(1):COMMIT FINISH
+//		T(2):R(1) => 4
+//		T(2):W(1,10)
+//      T(3):W(1, )
+//      T(3):W(4, )
+//      T(3):Rollback
+//      T(2):R(1,10)
+		int maxLen = analyzeSchedule(schedule);
+		printSchedule(schedule);
+		Object[][] expectedResults = new Object[schedule.length][maxLen];
+		expectedResults[T(2)][STEP(3)] = STEP(1);
+        expectedResults[T(2)][STEP(7)] = STEP(4);
+		executeSchedule(schedule, expectedResults, maxLen);
+	}
+
 	private static void test1() {
 		log.println("----------- Test 1 -----------");
 		/* Example schedule:

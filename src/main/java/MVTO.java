@@ -16,7 +16,6 @@ import java.util.logging.Logger;
 
 
 public class MVTO {
-  /* TODO -- your versioned key-value store data structure */
 
     private static HashMap<Integer, Transaction> activeTransactionsById = new HashMap<>();
 
@@ -71,12 +70,16 @@ public class MVTO {
     public static void write(int xact, int key, int value) throws Exception {
         logger.info("Write issued for " + xact + " => {" + key + "," + value + "}");
         Value val = kvStore.get(key);
+        if (val == null) {
+            System.out.println("Cannot issue write for a non existent key: " + key);
+            rollback(xact);
+        }
         Transaction txn = activeTransactionsById.get(xact);
         if (txn == null) {
             throw new Exception("Transaction " + xact + " is not active!");
         }
         ValueVersion versioned = val.getBeforeWriteTimestamp(txn.getTimestamp());
-        if (txn.getTimestamp() < versioned.getRts()) {
+        if (versioned == null || txn.getTimestamp() < versioned.getRts()) {
             rollback(xact);
         } else if (txn.getTimestamp() >= versioned.getRts() && txn.getTimestamp() == versioned.getWts()) {
             versioned.setContent(value);
